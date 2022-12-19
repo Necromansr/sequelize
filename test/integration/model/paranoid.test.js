@@ -60,7 +60,6 @@ describe(Support.getTestDialectTeaser('Model'), () => {
           type: DataTypes.STRING,
         },
         deletedAt: {
-          type: DataTypes.DATE,
           allowNull: true,
           field: 'deleted_at',
         },
@@ -86,8 +85,8 @@ describe(Support.getTestDialectTeaser('Model'), () => {
       expect(count).to.be.equal(1);
     });
 
-    if (current.dialect.supports.JSON) {
-      describe('JSON', () => {
+    if (current.dialect.supports.jsonOperations) {
+      describe('JSON Operations', () => {
         before(function () {
           this.Model = this.sequelize.define('Model', {
             name: {

@@ -47,7 +47,7 @@ export class User extends Model<
 User.init(
   {
     id: {
-      type: DataTypes.NUMBER,
+      type: DataTypes.INTEGER,
       primaryKey: true,
     },
     firstName: {
@@ -56,22 +56,12 @@ User.init(
     },
     lastName: DataTypes.STRING,
     username: DataTypes.STRING,
-    groupId: DataTypes.NUMBER,
+    groupId: DataTypes.INTEGER,
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,
   },
   {
     version: true,
-    getterMethods: {
-      a() {
-        return 1;
-      },
-    },
-    setterMethods: {
-      b(val: string) {
-        this.username = val;
-      },
-    },
     scopes: {
       custom(a: number) {
         return {

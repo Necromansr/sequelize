@@ -59,7 +59,7 @@ describe(Support.getTestDialectTeaser('HasOne'), () => {
         const fakeUser = await User.create({ username: 'foo' });
         const user = await User.create({ username: 'foo' });
         const group = await Group.create({ name: 'bar' });
-        const t = await sequelize.transaction();
+        const t = await sequelize.startUnmanagedTransaction();
         await group.setUser(user, { transaction: t });
         const groups = await Group.findAll();
         const associatedUser = await groups[0].getUser();
@@ -88,35 +88,37 @@ describe(Support.getTestDialectTeaser('HasOne'), () => {
       expect(task0).to.be.null;
     });
 
-    it('supports schemas', async function () {
-      const User = this.sequelize.define('User', { username: DataTypes.STRING }).schema('admin');
-      const Group = this.sequelize.define('Group', { name: DataTypes.STRING }).schema('admin');
+    if (current.dialect.supports.schemas) {
+      it('supports schemas', async function () {
+        const User = this.sequelize.define('User', { username: DataTypes.STRING }).schema('admin');
+        const Group = this.sequelize.define('Group', { name: DataTypes.STRING }).schema('admin');
 
-      Group.hasOne(User);
+        Group.hasOne(User);
 
-      await Support.dropTestSchemas(this.sequelize);
-      await this.sequelize.createSchema('admin');
-      await Group.sync({ force: true });
-      await User.sync({ force: true });
+        await Support.dropTestSchemas(this.sequelize);
+        await this.sequelize.createSchema('admin');
+        await Group.sync({ force: true });
+        await User.sync({ force: true });
 
-      const [fakeUser, user, group] = await Promise.all([
-        User.create({ username: 'foo' }),
-        User.create({ username: 'foo' }),
-        Group.create({ name: 'bar' }),
-      ]);
+        const [fakeUser, user, group] = await Promise.all([
+          User.create({ username: 'foo' }),
+          User.create({ username: 'foo' }),
+          Group.create({ name: 'bar' }),
+        ]);
 
-      await group.setUser(user);
-      const groups = await Group.findAll();
-      const associatedUser = await groups[0].getUser();
-      expect(associatedUser).not.to.be.null;
-      expect(associatedUser.id).to.equal(user.id);
-      expect(associatedUser.id).not.to.equal(fakeUser.id);
-      await this.sequelize.dropSchema('admin');
-      const schemas = await this.sequelize.showAllSchemas();
-      if (['postgres', 'mssql', 'mariadb'].includes(dialect)) {
-        expect(schemas).to.not.have.property('admin');
-      }
-    });
+        await group.setUser(user);
+        const groups = await Group.findAll();
+        const associatedUser = await groups[0].getUser();
+        expect(associatedUser).not.to.be.null;
+        expect(associatedUser.id).to.equal(user.id);
+        expect(associatedUser.id).not.to.equal(fakeUser.id);
+        await this.sequelize.dropSchema('admin');
+        const schemas = await this.sequelize.showAllSchemas();
+        if (['postgres', 'mssql', 'mariadb'].includes(dialect)) {
+          expect(schemas).to.not.have.property('admin');
+        }
+      });
+    }
   });
 
   describe('setAssociation', () => {
@@ -131,7 +133,7 @@ describe(Support.getTestDialectTeaser('HasOne'), () => {
         await sequelize.sync({ force: true });
         const user = await User.create({ username: 'foo' });
         const group = await Group.create({ name: 'bar' });
-        const t = await sequelize.transaction();
+        const t = await sequelize.startUnmanagedTransaction();
         await group.setUser(user, { transaction: t });
         const groups = await Group.findAll();
         const associatedUser = await groups[0].getUser();
@@ -277,7 +279,7 @@ describe(Support.getTestDialectTeaser('HasOne'), () => {
 
         await sequelize.sync({ force: true });
         const user = await User.create({ username: 'bob' });
-        const t = await sequelize.transaction();
+        const t = await sequelize.startUnmanagedTransaction();
         await user.createGroup({ name: 'testgroup' }, { transaction: t });
         const users = await User.findAll();
         const group = await users[0].getGroup();
@@ -298,8 +300,8 @@ describe(Support.getTestDialectTeaser('HasOne'), () => {
 
       Account.hasOne(User);
 
-      expect(User.rawAttributes.AccountId).to.exist;
-      expect(User.rawAttributes.AccountId.field).to.equal('account_id');
+      expect(User.getAttributes().AccountId).to.exist;
+      expect(User.getAttributes().AccountId.field).to.equal('account_id');
     });
 
     it('should use model name when using camelcase', function () {
@@ -308,8 +310,8 @@ describe(Support.getTestDialectTeaser('HasOne'), () => {
 
       Account.hasOne(User);
 
-      expect(User.rawAttributes.AccountId).to.exist;
-      expect(User.rawAttributes.AccountId.field).to.equal('AccountId');
+      expect(User.getAttributes().AccountId).to.exist;
+      expect(User.getAttributes().AccountId.field).to.equal('AccountId');
     });
 
     it('should support specifying the field of a foreign key', async function () {
@@ -323,8 +325,8 @@ describe(Support.getTestDialectTeaser('HasOne'), () => {
         },
       });
 
-      expect(User.rawAttributes.taskId).to.exist;
-      expect(User.rawAttributes.taskId.field).to.equal('task_id');
+      expect(User.getAttributes().taskId).to.exist;
+      expect(User.getAttributes().taskId.field).to.equal('task_id');
       await Task.sync({ force: true });
       await User.sync({ force: true });
 
@@ -448,7 +450,7 @@ describe(Support.getTestDialectTeaser('HasOne'), () => {
         // the `UPDATE` query generated by `save()` uses `id` in the
         // `WHERE` clause
 
-        const tableName = user.sequelize.getQueryInterface().queryGenerator.addSchema(user.constructor);
+        const tableName = User.getTableName();
         await user.sequelize.getQueryInterface().update(user, tableName, { id: 999 }, { id: user.id });
         const tasks = await Task.findAll();
         expect(tasks).to.have.length(1);
@@ -490,7 +492,7 @@ describe(Support.getTestDialectTeaser('HasOne'), () => {
         // the `UPDATE` query generated by `save()` uses `id` in the
         // `WHERE` clause
 
-        const tableName = user.sequelize.getQueryInterface().queryGenerator.addSchema(user.constructor);
+        const tableName = User.getTableName();
 
         await expect(
           user.sequelize.getQueryInterface().update(user, tableName, { id: 999 }, { id: user.id }),
@@ -524,7 +526,7 @@ describe(Support.getTestDialectTeaser('HasOne'), () => {
       Group.hasOne(User);
 
       await this.sequelize.sync({ force: true });
-      expect(User.rawAttributes.GroupPKBTName.type).to.an.instanceof(DataTypes.STRING);
+      expect(User.getAttributes().GroupPKBTName.type).to.an.instanceof(DataTypes.STRING);
     });
 
     it('should support a non-primary key as the association column on a target with custom primary key', async function () {
@@ -608,13 +610,13 @@ describe(Support.getTestDialectTeaser('HasOne'), () => {
       const Tasks = {};
 
       await Promise.all(dataTypes.map(async dataType => {
-        const tableName = `TaskXYZ_${dataType.key}`;
+        const tableName = `TaskXYZ_${dataType.getDataTypeId()}`;
         Tasks[dataType] = this.sequelize.define(tableName, { title: DataTypes.STRING });
 
         User.hasOne(Tasks[dataType], { foreignKey: { name: 'userId', type: dataType }, foreignKeyConstraints: false });
 
         await Tasks[dataType].sync({ force: true });
-        expect(Tasks[dataType].rawAttributes.userId.type).to.be.an.instanceof(dataType);
+        expect(Tasks[dataType].getAttributes().userId.type).to.be.an.instanceof(dataType);
       }));
     });
   });
@@ -632,9 +634,9 @@ describe(Support.getTestDialectTeaser('HasOne'), () => {
           },
         });
 
-        expect(Object.keys(InternetOrders.rawAttributes).length).to.equal(2);
-        expect(InternetOrders.rawAttributes.OrderId).to.be.ok;
-        expect(InternetOrders.rawAttributes.OrdersId).not.to.be.ok;
+        expect(Object.keys(InternetOrders.getAttributes()).length).to.equal(2);
+        expect(InternetOrders.getAttributes().OrderId).to.be.ok;
+        expect(InternetOrders.getAttributes().OrdersId).not.to.be.ok;
       });
     });
   });

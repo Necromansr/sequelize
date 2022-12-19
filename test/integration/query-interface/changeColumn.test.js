@@ -16,41 +16,41 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
   });
 
   describe('changeColumn', () => {
-    it('should support schemas', async function () {
-      await this.sequelize.createSchema('archive');
+    if (Support.sequelize.dialect.supports.schemas) {
+      it('should support schemas', async function () {
+        await this.sequelize.createSchema('archive');
 
-      await this.queryInterface.createTable({
-        tableName: 'users',
-        schema: 'archive',
-      }, {
-        id: {
-          type: DataTypes.INTEGER,
-          primaryKey: true,
-          autoIncrement: true,
-        },
-        currency: DataTypes.INTEGER,
+        await this.queryInterface.createTable({
+          tableName: 'users',
+          schema: 'archive',
+        }, {
+          id: {
+            type: DataTypes.INTEGER,
+            primaryKey: true,
+            autoIncrement: true,
+          },
+          currency: DataTypes.INTEGER,
+        });
+
+        await this.queryInterface.changeColumn({
+          tableName: 'users',
+          schema: 'archive',
+        }, 'currency', {
+          type: DataTypes.FLOAT,
+        });
+
+        const table = await this.queryInterface.describeTable({
+          tableName: 'users',
+          schema: 'archive',
+        });
+
+        if (['postgres', 'postgres-native', 'mssql', 'db2'].includes(dialect)) {
+          expect(table.currency.type).to.equal('REAL');
+        } else {
+          expect(table.currency.type).to.equal('FLOAT');
+        }
       });
-
-      await this.queryInterface.changeColumn({
-        tableName: 'users',
-        schema: 'archive',
-      }, 'currency', {
-        type: DataTypes.FLOAT,
-      });
-
-      const table = await this.queryInterface.describeTable({
-        tableName: 'users',
-        schema: 'archive',
-      });
-
-      if (['postgres', 'postgres-native'].includes(dialect)) {
-        expect(table.currency.type).to.equal('DOUBLE PRECISION');
-      } else if (dialect === 'db2') {
-        expect(table.currency.type).to.equal('DOUBLE');
-      } else {
-        expect(table.currency.type).to.equal('FLOAT');
-      }
-    });
+    }
 
     it('should change columns', async function () {
       await this.queryInterface.createTable({
@@ -78,10 +78,8 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
         tableName: 'users',
       });
 
-      if (['postgres', 'postgres-native'].includes(dialect)) {
-        expect(table.currency.type).to.equal('DOUBLE PRECISION');
-      } else if (dialect === 'db2') {
-        expect(table.currency.type).to.equal('DOUBLE');
+      if (['postgres', 'postgres-native', 'mssql', 'sqlite', 'db2'].includes(dialect)) {
+        expect(table.currency.type).to.equal('REAL');
       } else {
         expect(table.currency.type).to.equal('FLOAT');
       }
@@ -110,28 +108,29 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
         });
 
         await this.queryInterface.changeColumn('users', 'firstName', {
-          type: DataTypes.ENUM,
-          values: ['value1', 'value2', 'value3'],
-        });
-      });
-
-      it('should work with enums with schemas', async function () {
-        await this.sequelize.createSchema('archive');
-
-        await this.queryInterface.createTable({
-          tableName: 'users',
-          schema: 'archive',
-        }, {
-          firstName: DataTypes.STRING,
-        });
-
-        await this.queryInterface.changeColumn({
-          tableName: 'users',
-          schema: 'archive',
-        }, 'firstName', {
           type: DataTypes.ENUM(['value1', 'value2', 'value3']),
         });
       });
+
+      if (Support.sequelize.dialect.supports.schemas) {
+        it('should work with enums with schemas', async function () {
+          await this.sequelize.createSchema('archive');
+
+          await this.queryInterface.createTable({
+            tableName: 'users',
+            schema: 'archive',
+          }, {
+            firstName: DataTypes.STRING,
+          });
+
+          await this.queryInterface.changeColumn({
+            tableName: 'users',
+            schema: 'archive',
+          }, 'firstName', {
+            type: DataTypes.ENUM(['value1', 'value2', 'value3']),
+          });
+        });
+      }
     }
 
     describe('should support foreign keys', () => {
@@ -165,7 +164,7 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
         await this.queryInterface.changeColumn('users', 'level_id', {
           type: DataTypes.INTEGER,
           references: {
-            model: 'level',
+            table: 'level',
             key: 'id',
           },
           onUpdate: 'cascade',
@@ -193,7 +192,7 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
         await this.queryInterface.changeColumn('users', 'level_id', {
           type: DataTypes.INTEGER,
           references: {
-            model: 'level',
+            table: 'level',
             key: 'id',
           },
           onUpdate: 'cascade',
@@ -246,10 +245,8 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
     // The tests below address these problems
     // TODO: run in all dialects
     if (dialect === 'sqlite') {
-      it('should not remove unique constraints when adding or modifying columns', async function () {
-        await this.queryInterface.createTable({
-          tableName: 'Foos',
-        }, {
+      it('should not loose indexes & unique constraints when adding or modifying columns', async function () {
+        await this.queryInterface.createTable('foos', {
           id: {
             allowNull: false,
             autoIncrement: true,
@@ -266,30 +263,40 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
             unique: true,
             type: DataTypes.STRING,
           },
+          birthday: {
+            allowNull: false,
+            type: DataTypes.DATEONLY,
+          },
         });
 
-        await this.queryInterface.addColumn('Foos', 'phone', {
+        await this.queryInterface.addIndex('foos', ['birthday']);
+        const initialIndexes = await this.queryInterface.showIndex('foos');
+        let table = await this.queryInterface.describeTable('foos');
+        expect(table.email.unique).to.equal(true, '(0) email column should be unique');
+        expect(table.name.unique).to.equal(true, '(0) name column should be unique');
+
+        await this.queryInterface.addColumn('foos', 'phone', {
           type: DataTypes.STRING,
           defaultValue: null,
           allowNull: true,
         });
 
-        let table = await this.queryInterface.describeTable({
-          tableName: 'Foos',
-        });
+        expect(await this.queryInterface.showIndex('foos')).to.deep.equal(initialIndexes, 'addColumn should not modify indexes');
+
+        table = await this.queryInterface.describeTable('foos');
         expect(table.phone.allowNull).to.equal(true, '(1) phone column should allow null values');
         expect(table.phone.defaultValue).to.equal(null, '(1) phone column should have a default value of null');
         expect(table.email.unique).to.equal(true, '(1) email column should remain unique');
         expect(table.name.unique).to.equal(true, '(1) name column should remain unique');
 
-        await this.queryInterface.changeColumn('Foos', 'email', {
+        await this.queryInterface.changeColumn('foos', 'email', {
           type: DataTypes.STRING,
           allowNull: true,
         });
 
-        table = await this.queryInterface.describeTable({
-          tableName: 'Foos',
-        });
+        expect(await this.queryInterface.showIndex('foos')).to.deep.equal(initialIndexes, 'changeColumn should not modify indexes');
+
+        table = await this.queryInterface.describeTable('foos');
         expect(table.email.allowNull).to.equal(true, '(2) email column should allow null values');
         expect(table.email.unique).to.equal(true, '(2) email column should remain unique');
         expect(table.name.unique).to.equal(true, '(2) name column should remain unique');
@@ -372,7 +379,7 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
             autoIncrement: true,
           },
           name: {
-            type: DataTypes.CHAR,
+            type: DataTypes.STRING,
             allowNull: false,
           },
         });
@@ -392,7 +399,7 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
             allowNull: false,
             references: {
               key: 'id',
-              model: 'level',
+              table: 'level',
             },
             onDelete: 'CASCADE',
             onUpdate: 'CASCADE',
@@ -400,7 +407,7 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
         });
 
         await this.queryInterface.changeColumn('users', 'name', {
-          type: DataTypes.CHAR,
+          type: DataTypes.STRING,
           allowNull: false,
         });
 
@@ -409,7 +416,7 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
           allowNull: true,
           references: {
             key: 'id',
-            model: 'level',
+            table: 'level',
           },
           onDelete: 'CASCADE',
           onUpdate: 'CASCADE',
@@ -433,7 +440,7 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
             autoIncrement: true,
           },
           name: {
-            type: DataTypes.STRING,
+            type: DataTypes.INTEGER,
             allowNull: true,
           },
           level_id: {
@@ -441,7 +448,7 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
             allowNull: false,
             references: {
               key: 'id',
-              model: 'level',
+              table: 'level',
             },
             onDelete: 'CASCADE',
             onUpdate: 'CASCADE',
@@ -455,7 +462,7 @@ describe(Support.getTestDialectTeaser('QueryInterface'), () => {
             autoIncrement: true,
           },
           name: {
-            type: DataTypes.CHAR,
+            type: DataTypes.STRING,
             allowNull: false,
           },
         });
